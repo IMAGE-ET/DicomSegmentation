@@ -75,3 +75,17 @@ def test_data_generator(du):
         pass
     assert i == 8 / batch_size, "Unexpected number of iterations when using data_generator"
     gen.close()
+
+"""
+Todo:
+Error test cases:
+- Data folder structure:
+  - data_path does not exist
+  - dicom path does not exist
+  - contour path does not exist
+  - link file does not exist
+  - I contour file name pattern is different
+  - I countour folder name is different (used in data_generator
+- DicomError: How to generate illformatted dicom for test?
+- i-contour/ocountor polygons are outside the image
+"""

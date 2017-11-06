@@ -9,8 +9,13 @@ if data directory structure conventions changes.
 * CONTOUR_PATH contains sub folders one for each patient.
     * Directory named after original_id (SC-HF-I-1). See link.csv for details
     * Each folder contains i-contours and o-contours sub folders
-    * Each i-contour folder contains ~20 contour files (IM-0001-0048-icontour-manual.txt)
-    * Assumption: 0048 refers to the dcm file name. TODO:Check assumption
+    * Each i-contour folder contains ~20 contour files (IM-0001-0040-icontour-manual.txt)
+    * Each o-counter folder contains ~10 contour files (IM-0001-0040-ocontour-manual.txt)
+    * Assumption: 0040 refers to the dcm file name. TODO:Check assumption    
+* TODO:
+    * Faster data_generator: Store the preprocessed dicom and mask arrays on disk (using pickle?) to
+    * Setup instructions which includes required dependencies
+    * Handle dicoms of sizes other than 256
 
 """
 import csv
@@ -27,8 +32,8 @@ import random, re, os
 DICOM_SUFFIX = 'dicoms/'
 CONTOUR_SUFFIX = 'contourfiles/'
 LINK_FILE = 'link.csv'
-CFILE_REGEX_PATTERN = '(SC-HF-I-\d+)/i-contours/IM-\d+-(\d+)-icontour-manual.txt'
-CFILE_GLOB_PATTERN = '*/i-*/*'
+ICFILE_REGEX_PATTERN = '(SC-HF-I-\d+)/i-contours/IM-\d+-(\d+)-icontour-manual.txt'
+ICFILE_GLOB_PATTERN = '*/i-*/*'
 
 SIZE = 256 #Change this if DICOM dimensions change
 
@@ -52,13 +57,13 @@ class DicomUtils:
 
     def validate(self, data_path):
         if (not os.path.exists(data_path)):
-            raise ValueError('Path does not exist: %s'.format(data_path))
+            raise ValueError('Path does not exist: {}'.format(data_path))
         if (not os.path.exists(data_path + DICOM_SUFFIX)):
-            raise ValueError('Path does not exist: %s \n Please update DICOM_SUFFIX'.format(data_path + DICOM_SUFFIX))
+            raise ValueError('Path does not exist: {} \n Please update DICOM_SUFFIX'.format(data_path + DICOM_SUFFIX))
         if (not os.path.exists(data_path + CONTOUR_SUFFIX)):
-            raise ValueError('Path does not exist: %s \n Please update CONTOUR_SUFFIX'.format(data_path + CONTOUR_SUFFIX))
+            raise ValueError('Path does not exist: {} \n Please update CONTOUR_SUFFIX'.format(data_path + CONTOUR_SUFFIX))
         if (not os.path.exists(data_path + LINK_FILE)):
-            raise ValueError('Path does not exist: %s \n Please update LINK_FILE'.format(data_path + LINK_FILE))
+            raise ValueError('Path does not exist: {} \n Please update LINK_FILE'.format(data_path + LINK_FILE))
 
     def parse_dicom_file(self, filename):
         """Parse the given DICOM filename
@@ -66,27 +71,26 @@ class DicomUtils:
             :param filename: filepath to the DICOM file to parse
             :return: DICOM image data
 
+            throws InvalidDicomError if Dicom is corrupted
             To understand slope and intercept: https://blog.kitware.com/DICOM-rescale-intercept-rescale-slope-and-itk/
             """
+        
+        dcm = dicom.read_file(filename)
+        dcm_image = dcm.pixel_array
+
         try:
-            dcm = dicom.read_file(filename)
-            dcm_image = dcm.pixel_array
+            intercept = dcm.RescaleIntercept
+        except AttributeError:
+            intercept = 0.0
+        try:
+            slope = dcm.RescaleSlope
+        except AttributeError:
+            slope = 0.0
 
-            try:
-                intercept = dcm.RescaleIntercept
-            except AttributeError:
-                intercept = 0.0
-            try:
-                slope = dcm.RescaleSlope
-            except AttributeError:
-                slope = 0.0
+        if intercept != 0.0 and slope != 0.0:
+            dcm_image = dcm_image * slope + intercept
 
-            if intercept != 0.0 and slope != 0.0:
-                dcm_image = dcm_image * slope + intercept
-
-            return dcm_image
-        except InvalidDicomError:
-            return None
+        return dcm_image
 
     def parse_contour_file(self, filename, width, height):
         """Parse contour file and return associated mask and polygons
@@ -103,7 +107,7 @@ class DicomUtils:
                 coords = line.strip().split()
 
                 if(len(coords) != 2):
-                    raise ValueError("Unexpected content in contour file %s".format(filename))
+                    raise ValueError("Unexpected content in contour file {}".format(filename))
 
                 x_coord = float(coords[0])
                 y_coord = float(coords[1])
@@ -135,9 +139,9 @@ class DicomUtils:
         :param cfile: Contour filepath
         :return: Associated DICOM filepath
         """
-        pattern = self.contour_path + CFILE_REGEX_PATTERN
+        pattern = self.contour_path + ICFILE_REGEX_PATTERN
         match = re.search(pattern, cfile)
-        error_msg = "Unexpected contour filename pattern, please update CFILE_REGEX_PATTERN as needed"
+        error_msg = "Unexpected contour filename pattern, please update ICFILE_REGEX_PATTERN as needed"
         if(match == None):
             raise ValueError(error_msg)
         try:
@@ -186,11 +190,11 @@ class DicomUtils:
         :return: Batched DICOM and mask numpy arrays
         """
         if(cfiles == None):#cfiles is set only in unit tests
-            cregex = self.contour_path + CFILE_GLOB_PATTERN
+            cregex = self.contour_path + ICFILE_GLOB_PATTERN
             cfiles = glob.glob(cregex)
 
         if(len(cfiles) == 0):
-            raise ValueError('Could not find contour files in the format %s.\n Please update CFILE_GLOB_PATTERN '
+            raise ValueError('Could not find contour files in the format {}.\n Please update ICFILE_GLOB_PATTERN '
                              .format(cregex))
 
         random.shuffle(cfiles)
