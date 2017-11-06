@@ -32,7 +32,7 @@ import random, re, os
 DICOM_SUFFIX = 'dicoms/'
 CONTOUR_SUFFIX = 'contourfiles/'
 LINK_FILE = 'link.csv'
-ICFILE_REGEX_PATTERN = '(SC-HF-I-\d+)/i-contours/IM-\d+-(\d+)-icontour-manual.txt'
+CFILE_REGEX_PATTERN = '(SC-HF-I-\d+)/[io]-contours/IM-\d+-(\d+)-[io]contour-manual.txt'
 ICFILE_GLOB_PATTERN = '*/i-*/*'
 
 SIZE = 256 #Change this if DICOM dimensions change
@@ -139,9 +139,10 @@ class DicomUtils:
         :param cfile: Contour filepath
         :return: Associated DICOM filepath
         """
-        pattern = self.contour_path + ICFILE_REGEX_PATTERN
+        pattern = self.contour_path + CFILE_REGEX_PATTERN
+        
         match = re.search(pattern, cfile)
-        error_msg = "Unexpected contour filename pattern, please update ICFILE_REGEX_PATTERN as needed"
+        error_msg = "Unexpected contour filename pattern, please update CFILE_REGEX_PATTERN. Expected:{}\n Found:{}".format(pattern, cfile)
         if(match == None):
             raise ValueError(error_msg)
         try:
