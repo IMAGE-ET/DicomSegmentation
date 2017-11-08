@@ -33,7 +33,7 @@ DICOM_SUFFIX = 'dicoms/'
 CONTOUR_SUFFIX = 'contourfiles/'
 LINK_FILE = 'link.csv'
 CFILE_REGEX_PATTERN = '(SC-HF-I-\d+)/[io]-contours/IM-\d+-(\d+)-[io]contour-manual.txt'
-ICFILE_GLOB_PATTERN = '*/i-*/*'
+OCFILE_GLOB_PATTERN = '*/o-*/*'
 
 SIZE = 256 #Change this if DICOM dimensions change
 
@@ -118,20 +118,24 @@ class DicomUtils:
         mask = np.array(img).astype(bool)
         return mask, polygon
 
-    def get_dicom_and_mask(self, cfile):
+    def get_dicom_and_mask(self, ocfile):
         """
-        Parses contour file and the associated DICOM file and returns numpy arrays for DICOM and mask,
-        along with the polygon
+        Parses contour files and the associated DICOM file and returns numpy arrays for DICOM and masks,
+        along with the polygons
         Note: Leverages contour filename to get the associated DICOM file 
         :param cfile: Contour filename
-        :return: Numpy arrays for DICOM and mask, polygon representing the contour
+        :return: Numpy arrays for DICOM and masks, also polygons representing the contour
         """
-        dicom_path = self.get_dicom_path(cfile)
+        icfile = ocfile.replace('o-contours', 'i-contours').replace('ocontour','icontour')
+  
+        dicom_path = self.get_dicom_path(icfile)
         dicom_arr = self.parse_dicom_file(dicom_path)
 
         shape = dicom_arr.shape
-        mask, polygon = self.parse_contour_file(cfile, shape[0], shape[1])
-        return dicom_arr, mask, polygon
+        imask, ipolygon = self.parse_contour_file(icfile, shape[0], shape[1])
+        omask, opolygon = self.parse_contour_file(ocfile, shape[0], shape[1])
+       
+        return dicom_arr, imask, ipolygon, omask, opolygon
 
     def get_dicom_path(self, cfile):
         """
@@ -168,18 +172,20 @@ class DicomUtils:
         axarr[1].imshow(mask)
         plt.show()
 
-    def visualize_overlay(self, dicom_arr, polygon):
+    def visualize_overlay(self, filename, dicom_arr, polygons):
         """
         Visualization utility to overlay polygon over the DICOM
         :param DICOM_arr: numpy DICOM
-        :param polygon: contour polygon
+        :param polygons: contour polygons
         :return: displays overlayed DICOM
         """
         plt.clf()
         plt.imshow(dicom_arr)
-        x = [point[0] for point in polygon]
-        y = [point[1] for point in polygon]
-        plt.plot(x, y, 'r', alpha=1)
+        for polygon in polygons:
+            x = [point[0] for point in polygon]
+            y = [point[1] for point in polygon]
+            plt.plot(x, y, alpha=1)
+        plt.title(filename)
         plt.show()
 
     def data_generator(self, batch_size=8, cfiles = None):
@@ -191,11 +197,11 @@ class DicomUtils:
         :return: Batched DICOM and mask numpy arrays
         """
         if(cfiles == None):#cfiles is set only in unit tests
-            cregex = self.contour_path + ICFILE_GLOB_PATTERN
+            cregex = self.contour_path + OCFILE_GLOB_PATTERN
             cfiles = glob.glob(cregex)
 
         if(len(cfiles) == 0):
-            raise ValueError('Could not find contour files in the format {}.\n Please update ICFILE_GLOB_PATTERN '
+            raise ValueError('Could not find contour files in the format {}.\n Please update OCFILE_GLOB_PATTERN '
                              .format(cregex))
 
         random.shuffle(cfiles)
@@ -205,22 +211,38 @@ class DicomUtils:
         #TODO: If total samples is not a multiple of batch size, we are currently not utilizing the incomplete last batch
         for i in range(steps):
             #TODO: Handle SIZE better
-            yield self.get_data(cfiles, i * batch_size, i * batch_size + batch_size, SIZE)
+            yield self.get_batch(cfiles, i * batch_size, i * batch_size + batch_size, SIZE)
 
-    def get_data(self, cfiles, start, end, size):
+    def get_batch(self, cfiles, start, end, size):
         """
         Processes contour files indexed from start to end within cfiles list and batches them
-        :param cfiles: list of contour files
+        :param cfiles: list of o-contour files
         :param start: start index (inclusive)
         :param end: end index (exclusive)
         :return: Batched DICOM and mask numpy arrays
         """
         # Need to reshape the empty np holder to be able to concatenate inside for loop below
         dicom_final = np.array([]).reshape(0, size)
-        mask_final = np.array([]).reshape(0, size)
-
+        imask_final = np.array([]).reshape(0, size)
+        omask_final = np.array([]).reshape(0, size)
+        
         for i in range(start, end):
-            dicom_arr, mask, polygon = self.get_dicom_and_mask(cfiles[i])
+            ocfile = cfiles[i]
+            dicom_arr, imask, ipolygon, omask, opolygon = self.get_dicom_and_mask(ocfile)
+                
             dicom_final = np.concatenate([dicom_final, dicom_arr])
-            mask_final = np.concatenate([mask_final, mask])
-        return dicom_final, mask_final
+            imask_final = np.concatenate([imask_final, imask])
+            omask_final = np.concatenate([omask_final, omask])
+            
+        return dicom_final, imask_final, omask_final
+   
+    def get_ocfiles(self, num=0):
+        cfiles = []
+
+        cregex =  self.contour_path + OCFILE_GLOB_PATTERN
+        cfiles = glob.glob(cregex)
+        #random.shuffle(cfiles)
+        if num==0:
+            return cfiles
+        else:
+            return cfiles[:num]
