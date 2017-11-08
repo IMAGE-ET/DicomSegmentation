@@ -331,10 +331,10 @@ class DicomUtils:
 
         axarr[0,2].hist(blood_i, alpha=0.7, bins=range(1,250,10))
         axarr[0,2].hist(muscle_i, alpha=0.7, bins=range(1,250,10))
-        axarr[0,2].set_title("Blood, Muscle")
+        axarr[0,2].set_title("Muscle, Blood")
 
         axarr[1,0].hist(blood_muscle_i, alpha=0.7, bins=range(1,250,10))
-        axarr[1,0].set_title("Blood+Muscle")
+        axarr[1,0].set_title("Inside o-contour")
 
         axarr[1,1].imshow(self.upper_bound(blood_muscle,threshold))
         axarr[1,1].set_title("Thresholded at {}".format(threshold))
