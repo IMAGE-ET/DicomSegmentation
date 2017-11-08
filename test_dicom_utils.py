@@ -54,10 +54,12 @@ def test_get_dicom_and_mask(du):
     contour_file = random.choice(glob.glob(path))
     height = SIZE
     width = SIZE
-    dicom, mask, polygon = du.get_dicom_and_mask(contour_file)
+    dicom, imask, ipolygon, omask, opolygon = du.get_dicom_and_mask(contour_file)
     assert dicom.shape == (width, height), "Dicom shape is not ({},{})".format(width, height)
-    assert mask.shape == (width, height), "Mask shape is not ({},{})".format(width, height)
-    assert len(polygon) != 0, "Polygon is empty"
+    assert imask.shape == (width, height), "IMask shape is not ({},{})".format(width, height)
+    assert omask.shape == (width, height), "OMask shape is not ({},{})".format(width, height)
+    assert len(ipolygon) != 0, "IPolygon is empty"
+    assert len(opolygon) != 0, "OPolygon is empty"
 
 def test_data_generator(du):
     path = du.contour_path + '*/i-*/*'
@@ -67,10 +69,11 @@ def test_data_generator(du):
     i = 0
     try:
         while (1):
-            dicoms, masks = next(gen)
+            dicoms, imasks, omasks = next(gen)
             i += 1
             assert dicoms.shape == (SIZE * batch_size, SIZE), "Unexpected batched DICOM shape"
-            assert masks.shape == (SIZE * batch_size, SIZE), "Unexpected batched mask shape"
+            assert imasks.shape == (SIZE * batch_size, SIZE), "Unexpected batched imasks shape"
+            assert omasks.shape == (SIZE * batch_size, SIZE), "Unexpected batched omasks shape"
     except StopIteration:
         pass
     assert i == 8 / batch_size, "Unexpected number of iterations when using data_generator"
