@@ -181,10 +181,11 @@ class DicomUtils:
         """
         plt.clf()
         plt.imshow(dicom_arr)
-        for polygon in polygons:
+        colors=['r','g']
+        for index, polygon in enumerate(polygons):
             x = [point[0] for point in polygon]
             y = [point[1] for point in polygon]
-            plt.plot(x, y, alpha=1)
+            plt.plot(x, y, alpha=1, color=colors[index%2])
         plt.title(filename)
         plt.show()
 
