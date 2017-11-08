@@ -24,9 +24,10 @@ from dicom.errors import InvalidDicomError
 import glob
 from PIL import Image, ImageDraw
 import numpy as np
+import numpy.ma as ma
 import matplotlib.pyplot as plt
 import math
-import random, re, os
+import random, re, os, sys
 
 # DATA STRUCTURE
 DICOM_SUFFIX = 'dicoms/'
@@ -247,3 +248,107 @@ class DicomUtils:
             return cfiles
         else:
             return cfiles[:num]
+
+    def get_bb(self, mask):
+        """
+        Get bounding box coordinates for true values in the mask
+        """
+        xmin =256
+        xmax =0
+        ymin=256
+        ymax =0    
+        for row in range(len(mask)):
+            if any(mask[row]):
+                xmin = row
+                break
+        for row in reversed(range(len(mask))):
+            if any(mask[row]):
+                xmax = row
+                break
+        for column in range(len(mask[0])):
+            if any(mask[:,column]):
+                ymin = column
+                break
+        for column in reversed(range(len(mask[0]))):
+            if any(mask[:,column]):
+                ymax = column
+                break
+        return xmin,xmax,ymin,ymax
+
+    def getThreshold(self, values):
+        """
+        Finding threshold value, by getting the bimodal separation point
+        """ 
+        bins = np.arange(50,200,10) #Clipping it to a safe range that we know the separation would fall into,
+                                    #  to keep the calculation simple
+        hist = np.histogram(values.ravel(), bins=bins)
+        min_val = sys.maxsize #Intializing with a very large number
+        for index, value in enumerate(hist[0]):
+            if value<min_val:
+                min_val = value
+                threshold = hist[1][index]
+        return threshold
+
+    def analyze_intensity_thresholding(self, ocfile):
+        """
+        Analyze intensity frequencies for a given entry. Finds an ideal threshold by finding the best bimodal seperation
+        point. Plots histgorams and thresholded muscle part """
+        dicom_arr, imask, ipolygon, omask, opolygon = self.get_dicom_and_mask(ocfile)
+
+        #Crop the Region of interest
+        xmin,xmax,ymin,ymax = self.get_bb(omask)
+        omask = omask[xmin:xmax+1,ymin:ymax+1]
+        imask = imask[xmin:xmax+1,ymin:ymax+1]
+        dicom_arr = dicom_arr[xmin:xmax+1,ymin:ymax+1]
+
+        #Get classes of interest by masking(setting to zero) everything else
+        blood_muscle = ma.masked_array(dicom_arr, ~omask)
+        blood_muscle = ma.filled(blood_muscle, fill_value=0)
+
+        blood = ma.masked_array(blood_muscle, ~imask)
+        blood = ma.filled(blood, fill_value=0)
+
+        muscle = ma.masked_array(blood_muscle, imask)
+        muscle = ma.filled(muscle, fill_value=0)
+
+        #Get intensities in a 1D array, ignore the zeros
+        blood_i = blood.ravel()[blood.ravel()>0]
+        muscle_i = muscle.ravel()[muscle.ravel()>0]
+        blood_muscle_i = blood_muscle.ravel()[blood_muscle.ravel()>0]
+
+        #Get ideal threshold, We are only utilizing o-contour information(blood pool + muscle combined) here
+        threshold = self.getThreshold(blood_muscle_i)
+
+        #Plot the histograms
+        plt.clf()
+        f, axarr = plt.subplots(2, 3, figsize=(8, 4))
+
+        axarr[0,0].imshow(blood)
+        axarr[0,0].set_title("Blood")
+
+        axarr[0,1].imshow(muscle)
+        axarr[0,1].set_title("Muscle")
+
+        axarr[0,2].hist(blood_i, alpha=0.7, bins=range(1,250,10))
+        axarr[0,2].hist(muscle_i, alpha=0.7, bins=range(1,250,10))
+        axarr[0,2].set_title("Blood, Muscle")
+
+        axarr[1,0].hist(blood_muscle_i, alpha=0.7, bins=range(1,250,10))
+        axarr[1,0].set_title("Blood+Muscle")
+
+        axarr[1,1].imshow(self.upper_bound(blood_muscle,threshold))
+        axarr[1,1].set_title("Thresholded at {}".format(threshold))
+
+        plt.tight_layout()
+        plt.show()
+
+    def upper_bound(self, dicom, threshold):
+        """ Sets all values in dicom array that are above threshold to zero and returns the updated dicom array"""
+        bounded = np.empty((dicom.shape))
+        for row in range(len(dicom)):
+            for column in range(len(dicom[0])):
+                if dicom[row,column]>threshold:
+                    bounded[row,column] = 0
+                else:
+                    bounded[row,column] = dicom[row,column]
+        return bounded    
